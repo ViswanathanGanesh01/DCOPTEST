@@ -3,8 +3,8 @@
 This repository contains a self-contained batch simulation and post-processing pipeline for data center cooling loop configurations. It utilizes Functional Mock-up Units (FMUs) via FMPy and evaluates cooling performance across multiple structural architectures.
 
 > [!IMPORTANT]
-> - **Equipment Sizing**: The cooling equipment in the provided FMU model is sized for a **maximum IT load of 1 MW** (1,000,000 W).
-> - **Climate Configurations**: The pipeline is currently configured to run for **one climate file** (`DataCenter_0A`). Support for additional climate configurations will be explored in future updates.
+> - **Equipment Sizing**: The cooling equipment in the provided FMU model is sized for a **maximum IT load of 500 kW** (500,000 W).
+> - **FMU Model Configuration**: The pipeline runs using a single, unified FMU model **`DataCenterFMU.fmu`** placed in the `Model/` directory, driven dynamically by external climate `.mos` files to evaluate performance.
 
 
 ## Key Features
@@ -15,7 +15,7 @@ This repository contains a self-contained batch simulation and post-processing p
   - **Type 1 to 6 (Air-Cooled Only)**: Automatically forces liquid-cooling loop loads to zero (`ITLiq = 0.0 W`).
   - **Type 7 to 12 (Liquid-Cooled Only)**: Automatically forces air-cooling loop loads to zero (`ITAir = 0.0 W`).
 - **OS-Level Solver Warning Redirection**: Silences Newton solver convergence warnings from the compiled C-runtime DLLs for clean console logging.
-- **Interactive KPI Visualizations**: Exports publication-quality vector charts (`.pdf` and `.svg`):
+- **Interactive KPI Visualizations**: Exports publication-quality vector charts (`.pdf`):
   - **KPI Comprehensive Analysis**: Compares PUE, WUE, CUE, operating mode states (Free Cooling, Partially Mechanically Cooled, Fully Mechanically Cooled), and ASHRAE compliance bins.
   - **KPI Efficiency Circle Triangles**: Normalizes and maps PUE, WUE, and CUE on a polar axis.
 
@@ -48,12 +48,33 @@ The batch simulation pipeline supports the following 12 cooling system architect
 ## Repository Structure
 
 ```
-├── DataCenter_0A.fmu        # Compiled FMU model configuration
+├── Model/                  # Directory containing compiled FMU model configuration
+│   └── DataCenterFMU.fmu   # Self-contained cooling loop FMU model
 ├── it_profile.csv          # Custom IT load profiles input (time, ITAir, ITLiq)
 ├── master_run.py           # Self-contained simulation and plotting script
 ├── README.md               # Repository documentation
-└── results/                # Output directory containing generated CSVs (created automatically)
+├── results/                # Output directory containing generated CSVs (created automatically)
 ```
+
+## Input File Requirements
+
+### 1. Climate / Weather Files (`.mos` Format)
+The simulation requires hourly weather profile files placed in the `Climate Files/` directory.
+- **Source**: Weather files can be downloaded from the [EnergyPlus Weather Website](https://energyplus.net/weather).
+- **Format**: The weather files must be in the standard Modelica weather format (`.mos` tab-separated files) containing:
+  - Column 1: Time in seconds (from 0 to 31,536,000 for a full year).
+  - Column 2: Dry bulb temperature in Celsius.
+  - Column 3: Relative humidity (0–100%).
+  - Column 4: Wet bulb temperature in Celsius (or calculated dynamically).
+- **Conversion Note**: If you download a weather profile in another format (like `.epw`), it must be converted or reformatted into the four-column tab-separated `.mos` layout before execution.
+
+### 2. IT Load Profile (`it_profile.csv`)
+You can define custom time-varying IT loads using the `it_profile.csv` file in the root folder:
+- **Columns**:
+  - `time`: Time step in seconds from the start of the year (0 to 31,536,000).
+  - `ITAir`: Heat load on the air-cooling loop (in Watts). Sized for up to 500,000 W (500 kW).
+  - `ITLiq`: Heat load on the liquid-cooling loop (in Watts). Sized for up to 500,000 W (500 kW).
+- **Note**: The pipeline automatically forces `ITAir` to zero for liquid architectures (Types 7–12), and `ITLiq` to zero for air architectures (Types 1–6).
 
 ---
 
@@ -94,6 +115,8 @@ python master_run.py
 ### 4. Output Results
 Upon execution, the script will:
 1. Create a `results/` folder containing subfolders for each architecture type (e.g. `results/Architecture_1/DataCenter_0A.csv`).
-2. Generate and save two visualization plots:
-   - **`KPI_Comprehensive_Analysis.pdf` / `.svg`**
-   - **`KPI_Efficiency_Circle_Triangles.pdf` / `.svg`**
+2. Generate and save the visualization plots:
+   - **`KPI_Comprehensive_Analysis.pdf`**
+   - **`KPI_Efficiency_Circle_Triangles.pdf`**
+   - **`KPI_Equipment_Energy_Consumption.pdf`**
+3. **Error Logging**: If any cooling topology fails during simulation, the script dynamically intercepts the C-level FMU warnings/errors, categorizes the failure reason (e.g., *Temperature above/below limit*, *Mass fraction bounds*, or *Numerical stiffness*), and appends it to **`simulation_errors.log`** in the root directory.
