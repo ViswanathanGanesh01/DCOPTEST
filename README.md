@@ -15,7 +15,7 @@ This repository contains a self-contained batch simulation and post-processing p
   - **Type 1 to 6 (Air-Cooled Only)**: Automatically forces liquid-cooling loop loads to zero (`ITLiq = 0.0 W`).
   - **Type 7 to 12 (Liquid-Cooled Only)**: Automatically forces air-cooling loop loads to zero (`ITAir = 0.0 W`).
 - **OS-Level Solver Warning Redirection**: Silences Newton solver convergence warnings from the compiled C-runtime DLLs for clean console logging.
-- **Interactive KPI Visualizations**: Exports publication-quality vector charts (`.pdf`):
+- **Interactive KPI Visualizations**: Exports publication-quality vector charts (`.pdf` and `.svg`):
   - **KPI Comprehensive Analysis**: Compares PUE, WUE, CUE, operating mode states (Free Cooling, Partially Mechanically Cooled, Fully Mechanically Cooled), and ASHRAE compliance bins.
   - **KPI Efficiency Circle Triangles**: Normalizes and maps PUE, WUE, and CUE on a polar axis.
 
@@ -114,7 +114,7 @@ python master_run.py
 
 ### 4. Output Results
 Upon execution, the script will:
-1. Create a `results/` folder containing subfolders for each architecture type (e.g. `results/Architecture_1/DataCenter_0A.csv`).
+1. Create a `results/` folder containing subfolders for each architecture type (e.g. `results/Architecture_1/1A.csv`).
 2. Generate and save the visualization plots:
    - **`KPI_Comprehensive_Analysis.pdf`**
    - **`KPI_Efficiency_Circle_Triangles.pdf`**
