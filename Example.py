@@ -37,7 +37,7 @@ def suppress_stdout_stderr():
 # Global Settings
 # Note: The cooling equipment in the FMUs is sized for a maximum IT load of 500 kW (500,000 W)
 FMU_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Model")
-CLIMATES = ["0A","0B","1A","1B","2A","2B","3A","3B","3C","4A","4B","4C","5A","5B","5C","6A","6B","7","8"]
+CLIMATES = ["1A"]
 SIMULATION_STEP = 3600  # communication step size
 DATA_STEP = 3600  #  DATA step size
 
