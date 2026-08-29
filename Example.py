@@ -94,7 +94,7 @@ def get_enthalpy(temp_c, is_saturated=False, wb_c=None):
 def calculate_pointwise_wue(df, it_load_kw):
     req = ["TCWRet", "TCWSup", "PumpCW", "Wetbulb", "Drybulb"]
     if not all(c in df.columns for c in req): return pd.Series([0.0] * len(df))
-    COC, DRIFT_RATE, cp_water = 5.0, 0.0002, 4.186
+    COC, DRIFT_RATE, cp_water = 2.0, 0.0002, 4.186
     range_rr = df["TCWRet"] - df["TCWSup"]
     heat_rejected_kw = df["PumpCW"] * cp_water * range_rr
     wb_c = (df["Wetbulb"] - 273.15) if df["Wetbulb"].mean() > 200 else df["Wetbulb"]
