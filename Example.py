@@ -1,17 +1,32 @@
 import os
+import sys
+import platform
 import shutil
 import time
+import zipfile
 import warnings
 import logging
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import fmpy
-from fmpy import read_model_description, extract
-from fmpy.util import write_csv
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
 from contextlib import contextmanager
+
+# ----------------- OS Detection & Native Configuration -----------------
+CURRENT_OS = platform.system()  # 'Windows', 'Linux', 'Darwin'
+IS_WINDOWS = sys.platform == "win32"
+IS_LINUX = sys.platform.startswith("linux")
+IS_MACOS = sys.platform == "darwin"
+
+# Configure matplotlib non-interactive backend for headless/Linux environments
+import matplotlib
+if IS_LINUX and "DISPLAY" not in os.environ:
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+import fmpy
+from fmpy import read_model_description, extract
+from fmpy.util import write_csv
 
 # Suppress all Python and library warnings
 warnings.filterwarnings('ignore')
@@ -37,6 +52,7 @@ def suppress_stdout_stderr():
 # Global Settings
 # Note: The cooling equipment in the FMUs is sized for a maximum IT load of 500 kW (500,000 W)
 FMU_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Model")
+FMU_FILENAME = "DataCenterFMU.fmu"
 CLIMATES = ["1A"]
 SIMULATION_STEP = 3600  # communication step size
 DATA_STEP = 3600  #  DATA step size
@@ -76,6 +92,32 @@ ASHRAE_LIQUID_BINS = [(2, 17, "W17"), (2, 27, "W27"), (2, 32, "W32"), (2, 40, "W
 HATCHES = ['//', '\\\\', '||', '--', '++', 'xx', 'oo', '..', '**', 'OO']
 
 # ----------------- Helper Functions -----------------
+
+def check_fmu_native_support(fmu_path):
+    """Verifies that the FMU contains a compatible binary for the host OS."""
+    if not os.path.exists(fmu_path):
+        return False, f"FMU file not found at {fmu_path}"
+    with zipfile.ZipFile(fmu_path, 'r') as z:
+        raw_names = z.namelist()
+        # Normalize path separators in zip archive to forward slashes
+        names = [n.replace('\\', '/') for n in raw_names]
+        if IS_WINDOWS:
+            found = [raw_names[i] for i, n in enumerate(names) if n.lower().startswith("binaries/win") and n.lower().endswith(".dll")]
+            if found:
+                return True, f"Windows binary found: {found[0]}"
+            return False, "Missing Windows binary (.dll in binaries/win64/ or win32/) in FMU"
+        elif IS_LINUX:
+            found = [raw_names[i] for i, n in enumerate(names) if n.lower().startswith("binaries/linux") and n.lower().endswith(".so")]
+            if found:
+                return True, f"Linux binary found: {found[0]}"
+            return False, "Missing Linux binary (.so in binaries/linux64/) in FMU"
+        elif IS_MACOS:
+            found = [raw_names[i] for i, n in enumerate(names) if "darwin" in n.lower() and (n.lower().endswith(".dylib") or n.lower().endswith(".so"))]
+            if found:
+                return True, f"macOS binary found: {found[0]}"
+            return False, "Missing macOS binary in FMU"
+        else:
+            return False, f"Unsupported operating system: {CURRENT_OS}"
 
 def get_enthalpy(temp_c, is_saturated=False, wb_c=None):
     def calc_psat(t):
@@ -144,9 +186,9 @@ def run_single_simulation(args):
     target_dir = os.path.join(RESULTS_BASE_DIR, arch_sub_dir)
     os.makedirs(target_dir, exist_ok=True)
     
-    fmu_path = os.path.join(FMU_DIR, "DataCenterFMU.fmu")
+    fmu_path = os.path.join(FMU_DIR, FMU_FILENAME)
     if not os.path.exists(fmu_path):
-        return f"[{current_sim_count}/{total_sims}] Skipping: {climate} (DataCenterFMU.fmu not found)"
+        return f"[{current_sim_count}/{total_sims}] Skipping: {climate} ({FMU_FILENAME} not found)"
         
     climate_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Climate Files", f"{climate}.mos")
     if not os.path.exists(climate_file_path):
@@ -381,6 +423,13 @@ def run_single_simulation(args):
         shutil.rmtree(extracted_fmu_dir, ignore_errors=True)
 
 def run_fmu_simulation():
+    fmu_full_path = os.path.join(FMU_DIR, FMU_FILENAME)
+    supported, msg = check_fmu_native_support(fmu_full_path)
+    print(f"[OS DETECTION] Host Operating System: {CURRENT_OS} ({platform.machine()})")
+    print(f"[OS DETECTION] Native binary check: {msg}")
+    if not supported:
+        raise RuntimeError(f"Cannot run simulation natively on {CURRENT_OS}: {msg}")
+
     total_sims = len(ARCHS_TO_RUN) * len(CLIMATES)
     print(f"Initializing batch simulation: {total_sims} runs total.")
     print(f"Simulation step size set to: {SIMULATION_STEP} seconds.")
@@ -640,19 +689,32 @@ def plot_equipment_energy(df):
 def main():
     try:
         run_fmu_simulation()
-        folders = [f for f in os.listdir(RESULTS_BASE_DIR) if os.path.isdir(os.path.join(RESULTS_BASE_DIR, f))]
-        plot_archs = [int(x) for x in ARCHS_TO_RUN]
-        all_map = { "".join(filter(str.isdigit, f)): f for f in folders if int("".join(filter(str.isdigit, f))) in plot_archs }
-        all_data = []
-        with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
-            for res in executor.map(worker_helper, all_map.items()):
-                if res: all_data.extend(res)
-        if all_data:
-            df = pd.DataFrame(all_data)
-            plot_comprehensive_kpis(df); plot_kpi_circle_analysis(df); plot_equipment_energy(df)
+        if os.path.exists(RESULTS_BASE_DIR):
+            print("[STATUS] Processing results and generating KPI plots...", flush=True)
+            folders = [f for f in os.listdir(RESULTS_BASE_DIR) if os.path.isdir(os.path.join(RESULTS_BASE_DIR, f))]
+            plot_archs = [int(x) for x in ARCHS_TO_RUN]
+            all_map = { "".join(filter(str.isdigit, f)): f for f in folders if int("".join(filter(str.isdigit, f))) in plot_archs }
+            all_data = []
+            with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+                for res in executor.map(worker_helper, all_map.items()):
+                    if res: all_data.extend(res)
+            if all_data:
+                df = pd.DataFrame(all_data)
+                print("[STATUS] Generating KPI Comprehensive Analysis PDF...", flush=True)
+                plot_comprehensive_kpis(df)
+                print("[STATUS] Generating KPI Efficiency Circle Triangles PDF...", flush=True)
+                plot_kpi_circle_analysis(df)
+                print("[STATUS] Generating Equipment Energy Consumption PDF...", flush=True)
+                plot_equipment_energy(df)
+                print("[STATUS] All KPI plots successfully generated!", flush=True)
     finally:
         pass
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
+    if not IS_WINDOWS:
+        try:
+            multiprocessing.set_start_method("spawn", force=False)
+        except RuntimeError:
+            pass
     main()

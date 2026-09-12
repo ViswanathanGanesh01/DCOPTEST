@@ -24,7 +24,8 @@ This document provides comprehensive technical documentation for the **Data Cent
 9. [Mathematical & Physical Formulations](#9-mathematical--physical-formulations)
 10. [Environmental Compliance Standards](#10-environmental-compliance-standards)
 11. [Execution Workflow & Error Handling Safeguards](#11-execution-workflow--error-handling-safeguards)
-12. [Output Artifacts & Publications](#12-output-artifacts--publications)
+12. [Automated Unit Testing & Verification Framework](#12-automated-unit-testing--verification-framework)
+13. [Output Artifacts & Publications](#13-output-artifacts--publications)
 
 ---
 
@@ -60,9 +61,16 @@ The execution framework requires **Python 3.8 or higher** along with standard sc
 pip install numpy pandas matplotlib fmpy
 ```
 
-### 2.2 Platform Compatibility
+### 2.2 Cross-Platform & Native OS Compatibility
 
-The framework uses `FMPy` to instantiate and co-simulate FMUs. The primary model artifact (`DataCenterFMU.fmu`) contains pre-compiled dynamic-link libraries (C-DLLs) targeting **Win32** and **Win64** host operating systems.
+The framework uses `FMPy` to instantiate and co-simulate FMUs across both **Windows** and **Linux** environments:
+
+- **Dual-Platform FMU Binaries:** The model package (`Model/DataCenterFMU.fmu`) contains cross-compiled binaries:
+  - `binaries/win64/DataCenterFMU.dll` (Windows 64-bit) / `binaries/win32/DataCenterFMU.dll` (Windows 32-bit)
+  - `binaries/linux64/DataCenterFMU.so` (Linux 64-bit, compatible with Ubuntu, Debian, RHEL, and WSL2)
+- **Automatic Host OS Recognition:** The execution scripts automatically inspect the runtime operating system (`platform.system()`, `sys.platform`) and verify matching binary availability inside the FMU archive prior to simulation.
+- **Headless Visualization Fallback:** On Linux and headless server environments without an active X11 display, the framework dynamically selects matplotlib's non-interactive `Agg` backend to avoid display errors.
+- **Multi-Core Process Safety:** Configures `multiprocessing.freeze_support()` on Windows and safe process spawning on Unix/Linux to ensure reliable parallel worker execution across physical CPU cores.
 
 ---
 
@@ -71,17 +79,20 @@ The framework uses `FMPy` to instantiate and co-simulate FMUs. The primary model
 ```
 .
 ├── Model/                          # Compiled FMU model directory
-│   └── DataCenterFMU.fmu           # Unified cooling loop FMU model
+│   └── DataCenterFMU.fmu           # Unified cooling loop FMU model (Win64 DLL + Linux64 SO)
 ├── Climate Files/                  # Weather profile files (.mos format)
 │   ├── 0A.mos
 │   ├── 1A.mos                      # Primary benchmark profile (Miami, FL)
 │   ├── ...
 │   └── 8.mos
+├── test_data/                      # Golden reference baseline datasets
+│   └── ref_arch1_24h.csv           # 24-hour deterministic reference simulation output
 ├── it_profile.csv                  # Time-varying IT load profile
 ├── master_run.py                   # Multi-climate batch execution script
-├── Example.py                      # Illustrative benchmark script (Zone 1A)
+├── Example.py                      # Illustrative benchmark script with native OS detection
+├── unit_test.py              # Automated unit testing suite with reference comparison
 ├── simulation_errors.log           # Diagnostic log capturing C-runtime warnings
-├── Documentation.pdf               # Repository overview
+├── Documentation.pdf               # Framework technical documentation
 └── results/                        # Execution CSV outputs directory
     ├── Architecture_1/
     │   ├── 1A.csv
@@ -329,7 +340,66 @@ python master_run.py
 
 ---
 
-## 12. Output Artifacts & Publications
+## 12. Automated Unit Testing & Verification Framework
+
+The framework includes an automated regression and verification test suite in `unit_test.py` ensuring cross-platform stability, binary integrity, and thermodynamic accuracy.
+
+### 12.1 Running the Test Suite
+
+Execute the test suite natively on either **Windows** or **Linux**:
+
+```bash
+# Windows
+python unit_test.py
+
+# Linux / WSL
+python3 unit_test.py
+```
+
+Or via Python's standard unittest test runner:
+
+```bash
+python -m unittest unit_test.py
+```
+
+### 12.2 Test Suite Coverage
+
+The unit test suite consists of 5 modular test cases covering 9 automated assertions:
+
+| Test Case | Method | Description |
+|---|---|---|
+| **`TestEnvironmentAndDependencies`** | `test_dependencies` | Confirms `numpy`, `pandas`, `matplotlib`, and `fmpy` are installed and importable. |
+| | `test_workspace_files_exist` | Validates presence of `Model/`, `Climate Files/`, `DataCenterFMU.fmu`, and `it_profile.csv`. |
+| **`TestFMUIntegrity`** | `test_model_description_xml_present` | Checks ZIP archive structure for `modelDescription.xml`. |
+| | `test_platform_binary_present` | Verifies matching native binary (.dll on Windows, .so on Linux). |
+| | `test_read_model_description` | Validates FMI 2.0 standard compliance and required model input variables. |
+| **`TestPsychrometricCalculations`** | `test_enthalpy_reasonable_range` | Verifies Stull & Tetens psychrometric calculations within expected physical bounds. |
+| | `test_wue_calculation` | Validates non-negativity and consistency of Water Usage Effectiveness functions. |
+| **`TestSimulationSmoke`** | `test_24hr_simulation` | Runs a 24-hour smoke simulation of Architecture 1 in < 2 seconds, verifying non-NaN/non-Inf output. |
+| **`TestReferenceComparison`** | `test_compare_simulation_against_reference` | Performs point-by-point numerical validation against `test_data/ref_arch1_24h.csv`. |
+
+### 12.3 Golden Reference Dataset & Interactive Generation
+
+`TestReferenceComparison` evaluates numerical consistency against pre-computed golden reference results stored in `test_data/ref_arch1_24h.csv`:
+
+- **Configurable Tolerances:**
+  - Total HVAC Power ($P_{\text{HVAC}}$): $\text{rtol} = 10^{-3}$ (0.1%), $\text{atol} = 5.0\text{ W}$
+  - Power Usage Effectiveness ($\text{PUE}$): $\text{rtol} = 10^{-4}$, $\text{atol} = 0.005$
+  - Equipment Electrical Powers ($P_{\text{Fan}}$, $P_{\text{Chiller}}$, $P_{\text{Pump}}$): $\text{rtol} = 10^{-3}$, $\text{atol} = 1.0\text{ to }2.0\text{ W}$
+  - Ambient Temperatures ($T_{\text{db}}$, $T_{\text{wb}}$): $\text{rtol} = 10^{-4}$, $\text{atol} = 0.05\text{ K}$
+- **Interactive Baseline Creation Prompt:**
+  If the reference data file does not exist, the test suite detects its absence and interactively prompts the user:
+  ```
+  [REFERENCE CHECK] Reference data file not found at: test_data/ref_arch1_24h.csv
+  No reference data exists. Would you like to run the simulation and write it as test_data? [y/N]:
+  ```
+  - Entering **`y`** (or setting `AUTO_WRITE_REF_DATA=1` in headless/CI environments) executes the 24-hour simulation, writes `test_data/ref_arch1_24h.csv`, and validates the newly created dataset.
+  - Entering **`n`** skips the reference test cleanly (`unittest.SkipTest`) without failing the rest of the test suite.
+- **Clean Console Output:** Internal FMPy solver warnings and reversed flow notices are silenced via dedicated null loggers, ensuring clean test reports.
+
+---
+
+## 13. Output Artifacts & Publications
 
 The execution scripts output detailed time-series CSV files under `results/Architecture_<ID>/<Climate>.csv` and automatically export high-resolution vector figures:
 
