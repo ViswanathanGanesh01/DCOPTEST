@@ -406,3 +406,18 @@ The execution scripts output detailed time-series CSV files under `results/Archi
 1. **`KPI_Comprehensive_Analysis.pdf`** — Multi-panel chart detailing PUE, WUE, CUE, operational mode distributions, and ASHRAE thermal compliance percentages.
 2. **`KPI_Efficiency_Circle_Triangles.pdf`** — Polar-coordinate radar plot mapping normalized performance centroids for PUE, WUE, and CUE.
 3. **`KPI_Equipment_Energy_Consumption.pdf`** — Stacked bar chart breaking down annual electrical energy consumption (MWh) across Chillers, Tower Fans, Dry Cooler Fans, Condenser Water Pumps, Chilled Water Pumps, AHU Fans, and CDU Pumps.
+
+## Citation
+  Ganesh, Viswanathan, Hongjun Li, Michael Maloney, and Wangda Zuo. "DCOPTEST: A novel unified virtual testbed for data center cooling systems." SoftwareX 36 (2026): 103073.
+  ```
+  @article{ganesh2026dcoptest,
+    title={DCOPTEST: A novel unified virtual testbed for data center cooling systems},
+    author={Ganesh, Viswanathan and Li, Hongjun and Maloney, Michael and Zuo, Wangda},
+    journal={SoftwareX},
+    volume={36},
+    pages={103073},
+    year={2026},
+    publisher={Elsevier}
+  }
+  ```
+
